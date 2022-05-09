@@ -20,12 +20,17 @@ import cv2
 import numpy as np
 import torch
 from torch.utils.data import Dataset, DataLoader
-
+from utils import utils_blindsr as blindsr
+from utils import utils_image as util
 import imgproc
 
 __all__ = [
-    "TrainValidImageDataset", "TestImageDataset",
-    "PrefetchGenerator", "PrefetchDataLoader", "CPUPrefetcher", "CUDAPrefetcher",
+    "TrainValidImageDataset",
+    "TestImageDataset",
+    "PrefetchGenerator",
+    "PrefetchDataLoader",
+    "CPUPrefetcher",
+    "CUDAPrefetcher",
 ]
 
 
@@ -39,10 +44,15 @@ class TrainValidImageDataset(Dataset):
         mode (str): Data set loading method, the training data set is for data enhancement, and the verification data set is not for data enhancement.
     """
 
-    def __init__(self, image_dir: str, image_size: int, upscale_factor: int, mode: str) -> None:
+    def __init__(
+        self, image_dir: str, image_size: int, upscale_factor: int, mode: str
+    ) -> None:
         super(TrainValidImageDataset, self).__init__()
         # Get all image file names in folder
-        self.image_file_names = [os.path.join(image_dir, image_file_name) for image_file_name in os.listdir(image_dir)]
+        self.image_file_names = [
+            os.path.join(image_dir, image_file_name)
+            for image_file_name in os.listdir(image_dir)
+        ]
         # Specify the high-resolution image size, with equal length and width
         self.image_size = image_size
         # How many times the high-resolution image is the low-resolution image
@@ -52,23 +62,24 @@ class TrainValidImageDataset(Dataset):
 
     def __getitem__(self, batch_index: int) -> [torch.Tensor, torch.Tensor]:
         # Read a batch of image data
-        image = cv2.imread(self.image_file_names[batch_index], cv2.IMREAD_UNCHANGED).astype(np.float32) / 255.
-
+        image = util.imread_uint(self.image_file_names[batch_index], 3)
+        image = util.uint2single(image)
         # Image processing operations
         if self.mode == "Train":
-            hr_image = imgproc.random_crop(image, self.image_size)
-            hr_image = imgproc.random_rotate(hr_image, angles=[0, 90, 180, 270])
-            hr_image = imgproc.random_horizontally_flip(hr_image, p=0.5)
+            hr_image, lr_image = blindsr.degradation_bsrgan_plus(
+                image,
+                sf=self.upscale_factor,
+                shuffle_prob=0.1,
+                use_sharp=True,
+                lq_patchsize=self.image_size,
+            )
+
         elif self.mode == "Valid":
             hr_image = imgproc.center_crop(image, self.image_size)
         else:
-            raise ValueError("Unsupported data processing model, please use `Train` or `Valid`.")
-
-        lr_image = imgproc.imresize(hr_image, 1 / self.upscale_factor)
-
-        # BGR convert to RGB
-        lr_image = cv2.cvtColor(lr_image, cv2.COLOR_BGR2RGB)
-        hr_image = cv2.cvtColor(hr_image, cv2.COLOR_BGR2RGB)
+            raise ValueError(
+                "Unsupported data processing model, please use `Train` or `Valid`."
+            )
 
         # Convert image data into Tensor stream format (PyTorch).
         # Note: The range of input and output is between [0, 1]
@@ -90,18 +101,34 @@ class TestImageDataset(Dataset):
         upscale_factor (int): Image up scale factor.
     """
 
-    def __init__(self, test_lr_image_dir: str, test_hr_image_dir: str, upscale_factor: int) -> None:
+    def __init__(
+        self, test_lr_image_dir: str, test_hr_image_dir: str, upscale_factor: int
+    ) -> None:
         super(TestImageDataset, self).__init__()
         # Get all image file names in folder
-        self.lr_image_file_names = [os.path.join(test_lr_image_dir, x) for x in os.listdir(test_lr_image_dir)]
-        self.hr_image_file_names = [os.path.join(test_hr_image_dir, x) for x in os.listdir(test_hr_image_dir)]
+        self.lr_image_file_names = [
+            os.path.join(test_lr_image_dir, x) for x in os.listdir(test_lr_image_dir)
+        ]
+        self.hr_image_file_names = [
+            os.path.join(test_hr_image_dir, x) for x in os.listdir(test_hr_image_dir)
+        ]
         # How many times the high-resolution image is the low-resolution image
         self.upscale_factor = upscale_factor
 
     def __getitem__(self, batch_index: int) -> [torch.Tensor, torch.Tensor]:
         # Read a batch of image data
-        lr_image = cv2.imread(self.lr_image_file_names[batch_index], cv2.IMREAD_UNCHANGED).astype(np.float32) / 255.
-        hr_image = cv2.imread(self.hr_image_file_names[batch_index], cv2.IMREAD_UNCHANGED).astype(np.float32) / 255.
+        lr_image = (
+            cv2.imread(
+                self.lr_image_file_names[batch_index], cv2.IMREAD_UNCHANGED
+            ).astype(np.float32)
+            / 255.0
+        )
+        hr_image = (
+            cv2.imread(
+                self.hr_image_file_names[batch_index], cv2.IMREAD_UNCHANGED
+            ).astype(np.float32)
+            / 255.0
+        )
 
         # BGR convert to RGB
         lr_image = cv2.cvtColor(lr_image, cv2.COLOR_BGR2RGB)
@@ -215,7 +242,9 @@ class CUDAPrefetcher:
         with torch.cuda.stream(self.stream):
             for k, v in self.batch_data.items():
                 if torch.is_tensor(v):
-                    self.batch_data[k] = self.batch_data[k].to(self.device, non_blocking=True)
+                    self.batch_data[k] = self.batch_data[k].to(
+                        self.device, non_blocking=True
+                    )
 
     def next(self):
         torch.cuda.current_stream().wait_stream(self.stream)
