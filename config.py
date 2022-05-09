@@ -26,7 +26,7 @@ device = torch.device("cuda", 0)
 # Turning on when the image size does not change during training can speed up training
 cudnn.benchmark = True
 # Image magnification factor
-upscale_factor = 2
+upscale_factor = 4
 # Current configuration parameter method
 mode = "train"
 # Experiment name, easy to save weights and log files
@@ -34,21 +34,21 @@ exp_name = "edsr_x2"
 
 if mode == "train":
     # Dataset
-    train_image_dir = f"data/DIV2K/EDSR/train"
-    valid_image_dir = f"data/DIV2K/EDSR/valid"
-    test_lr_image_dir = f"data/Set5/LRbicx{upscale_factor}"
-    test_hr_image_dir = f"data/Set5/GTmod12"
+    train_image_dir = f"../div2k/DIV2K_train_HR"
+    valid_image_dir = f"../div2k/DIV2K_valid_HR"
+    test_lr_image_dir = f"../Set5/LRbicx4"
+    test_hr_image_dir = f"../Set5/GTmod12"
 
-    image_size = int(upscale_factor * 48)
+    image_size = 64
     batch_size = 64
     num_workers = 4
 
     # Incremental training and migration training
     start_epoch = 0
-    resume = ""
+    resume = "../EDSR/edsr_x4-DIV2K-095cbe63.pth.tar"
 
     # Total num epochs
-    epochs = 30
+    epochs = 300
 
     # Adam optimizer parameter
     model_lr = 1e-4
