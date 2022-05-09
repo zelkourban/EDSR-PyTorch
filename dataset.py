@@ -65,6 +65,7 @@ class TrainValidImageDataset(Dataset):
         image = util.imread_uint(self.image_file_names[batch_index], 3)
         image = util.uint2single(image)
         # Image processing operations
+        lr_image = image
         if self.mode == "Train":
             hr_image, lr_image = blindsr.degradation_bsrgan_plus(
                 image,
